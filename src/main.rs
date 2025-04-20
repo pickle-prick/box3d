@@ -228,7 +228,8 @@ fn draw_lazer_eye(pointers: Query<&PointerInteraction>,
 
 fn hit_with_lazer_eye(pointers: Query<&PointerInteraction>,
                   mut camera: Single<&mut Transform, With<Camera>>,
-                  mut hittables: Query<(&Transform, &mut Rigidbody3D), (With<Hittable>, Without<Camera>)>,
+                  mut hittables: Query<(&Transform, &mut Rigidbody3D, &mut Constraint3D), (With<Hittable>, Without<Camera>)>,
+                  // mut anchors: Query<(&Transform, &mut Rigidbody3D), (Without<Hittable>, Without<Camera>)>,
                   mut system: ResMut<RigidbodySystem3D>,
                   mouse_buttons: Res<ButtonInput<MouseButton>>,
                   mut gizmos: Gizmos)
@@ -237,15 +238,14 @@ fn hit_with_lazer_eye(pointers: Query<&PointerInteraction>,
   let camera_transform = &mut *camera;
   for (point, normal, entity) in pointers.iter()
                                          .filter_map(|interaction| interaction.get_nearest_hit())
-                                         .filter_map(|(entity, hit)| {
-                                           if hittables.contains(*entity)
-                                           {
-                                             hit.position.zip(hit.normal).map(|(point, normal)| (point, normal, *entity)) 
-                                           }
-                                           else { None }
-                                         })
+                                         .filter_map(|(entity, hit)| hit.position.zip(hit.normal).map(|(point, normal)| (point, normal, *entity)))
   {
-    if let Ok((transform, body)) = hittables.get(entity)
+    if !hittables.contains(entity)
+    {
+      continue;
+    }
+
+    if let Ok((t_a, rb_a, mut c)) = hittables.get_mut(entity)
     {
       if mouse_buttons.just_pressed(MouseButton::Left)
       {
@@ -253,11 +253,31 @@ fn hit_with_lazer_eye(pointers: Query<&PointerInteraction>,
           dir: (point-camera_transform.translation).normalize(),
           strength: 100.0,
           // relative to the body position (in world space)
-          contact: point-transform.translation,
+          contact: point-t_a.translation,
           target: entity,
         };
         system.forces.push(Force3D::Constant(F));
       }
+
+      // change contact point
+      // if mouse_buttons.just_pressed(MouseButton::Right)
+      // {
+      //   match &mut *c
+      //   {
+      //     Constraint3D::Distance(cc) => {
+      //       let point = point - t_a.translation;
+      //       let point_local = t_a.rotation.inverse().mul_vec3(point);
+      //       cc.point_a = point_local;
+
+      //       // TODO: reset distance
+      //       // NOTE(k): we are expecting the anchor is fixed and static, so just use pint_b
+      //       cc.d = cc
+
+      //       // TODO: reset P and L? (not sure)
+      //     },
+      //     _ => todo!(),
+      //   }
+      // }
     }
   }
 }
