@@ -199,6 +199,7 @@ pub enum Constraint3D
 pub enum Rigidbody3DKind
 {
   Static,
+  Sleep,
   Dynamic,
 }
 
@@ -208,7 +209,7 @@ pub enum Rigidbody3DShape
   Cuboid { x: f32, y: f32, z: f32 }, /* dimension */
 }
 
-fn inertia_from_cuboid(M: f32, dim: Vec3) -> Mat3
+pub fn inertia_from_cuboid(M: f32, dim: Vec3) -> Mat3
 {
   let mut ret = Mat3::ZERO;
   let Vec3 {x: x0, y: y0, z: z0} = dim;
@@ -218,7 +219,7 @@ fn inertia_from_cuboid(M: f32, dim: Vec3) -> Mat3
   return ret;
 }
 
-fn inertiainv_from_cuboid(M: f32, dim: Vec3) -> Mat3
+pub fn inertiainv_from_cuboid(M: f32, dim: Vec3) -> Mat3
 {
   let mut ret = Mat3::ZERO;
   let Vec3 {x: x0, y: y0, z: z0} = dim;
@@ -284,6 +285,17 @@ impl Rigidbody3D
   }
 }
 
+impl Rigidbody3D
+{
+  pub fn reset_energy(&mut self)
+  {
+    self.v = Vec3::ZERO;
+    self.omega = Vec3::ZERO;
+    self.P = Vec3::ZERO;
+    self.L = Vec3::ZERO;
+  }
+}
+
 #[derive(Resource)]
 pub struct RigidbodySystem3D
 {
@@ -306,7 +318,7 @@ impl RigidbodySystem3D
     system.constraints.clear();
   }
 
-  pub fn step(fixed_time: Res<Time<Fixed>>, system: Res<RigidbodySystem3D>, mut query: Query<(Entity, &mut Rigidbody3D, &mut Transform)>)
+  pub fn step(fixed_time: Res<Time<Fixed>>, system: Res<RigidbodySystem3D>, mut bodies: Query<(Entity, &mut Rigidbody3D, &mut Transform)>)
   {
     let delta_secs = fixed_time.delta_secs();
 
@@ -314,7 +326,7 @@ impl RigidbodySystem3D
     // collect state
     // x, q, P, L [1, 13]
     let mut state: Vec<f32> = Vec::new();
-    for (idx, (entity, rb, mut transform)) in query.iter_mut().enumerate()
+    for (idx, (entity, rb, mut transform)) in bodies.iter_mut().enumerate()
     {
       // entities.push(entity);
       let local: [f32; 13] = [
@@ -343,52 +355,55 @@ impl RigidbodySystem3D
       state.extend_from_slice(&local[..]);
     }
 
-    let state_next = ode_euler(&state, delta_secs, |X: &[f32], delta_secs: f32| {RigidbodySystem3D::dxdt(X, delta_secs, &mut query, &system)} );;
-    RigidbodySystem3D::state_set(&state_next, &mut query);
+    let state_next = ode_euler(&state, delta_secs, |X: &[f32], delta_secs: f32| {RigidbodySystem3D::dxdt(X, delta_secs, &mut bodies, &system)} );;
+    RigidbodySystem3D::state_set(&state_next, &mut bodies);
   }
 
-  fn state_set(X: &[f32], query: &mut Query<(Entity, &mut Rigidbody3D, &mut Transform)>) -> ()
+  fn state_set(X: &[f32], bodies: &mut Query<(Entity, &mut Rigidbody3D, &mut Transform)>) -> ()
   {
     const stride: usize = 13;
-    for (i, (entity, mut rb, mut transform)) in query.iter_mut().enumerate()
+    for (i, (entity, mut rb, mut transform)) in bodies.iter_mut().enumerate()
     {
-      let src = &X[i*stride..];
-      // x
-      rb.x.x = src[0];
-      rb.x.y = src[1];
-      rb.x.z = src[2];
-      // q
-      rb.q.x = src[3];
-      rb.q.y = src[4];
-      rb.q.z = src[5];
-      rb.q.w = src[6];
-      rb.q = rb.q.normalize();
-      // P
-      rb.P.x = src[7];
-      rb.P.y = src[8];
-      rb.P.z = src[9];
-      // L
-      rb.L.x = src[10];
-      rb.L.y = src[11];
-      rb.L.z = src[12];
+      if rb.kind == Rigidbody3DKind::Dynamic
+      {
+        let src = &X[i*stride..];
+        // x
+        rb.x.x = src[0];
+        rb.x.y = src[1];
+        rb.x.z = src[2];
+        // q
+        rb.q.x = src[3];
+        rb.q.y = src[4];
+        rb.q.z = src[5];
+        rb.q.w = src[6];
+        rb.q = rb.q.normalize();
+        // P
+        rb.P.x = src[7];
+        rb.P.y = src[8];
+        rb.P.z = src[9];
+        // L
+        rb.L.x = src[10];
+        rb.L.y = src[11];
+        rb.L.z = src[12];
 
-      // compute auxiliary variables ...
+        // compute auxiliary variables ...
 
-      // R (rotation matrix)
-      rb.R = Mat3::from_quat(rb.q);
+        // R (rotation matrix)
+        rb.R = Mat3::from_quat(rb.q);
 
-      // Iinv
-      rb.Iinv = rb.R * (rb.Ibodyinv * rb.R.transpose());
+        // Iinv
+        rb.Iinv = rb.R * (rb.Ibodyinv * rb.R.transpose());
 
-      // v(t)
-      rb.v = rb.P * (1.0/rb.mass);
+        // v(t)
+        rb.v = rb.P * (1.0/rb.mass);
 
-      // ω(t) = I−1(t)L(t)
-      rb.omega = rb.Iinv * rb.L;
+        // ω(t) = I−1(t)L(t)
+        rb.omega = rb.Iinv * rb.L;
 
-      // copy translation and rotation to transform
-      transform.translation = rb.x;
-      transform.rotation = rb.q;
+        // copy translation and rotation to transform
+        transform.translation = rb.x;
+        transform.rotation = rb.q;
+      }
     }
   }
 
@@ -446,14 +461,17 @@ impl RigidbodySystem3D
         Force3D::Constant(f) => {
           if let Ok((entity, mut rb, _)) = query.get_mut(f.target)
           {
-            let F: Vec3 = f.dir * f.strength;
+            if rb.kind == Rigidbody3DKind::Dynamic
+            {
+              let F: Vec3 = f.dir * f.strength;
 
-            // linear
-            rb.force += F;
+              // linear
+              rb.force += F;
 
-            // torque
-            let torque: Vec3 = f.contact.cross(F);
-            rb.torque += torque;
+              // torque
+              let torque: Vec3 = f.contact.cross(F);
+              rb.torque += torque;
+            }
           }
         }
         Force3D::VisousDrag(f) => {
@@ -461,14 +479,17 @@ impl RigidbodySystem3D
           {
             if let Ok((entity, mut rb, _)) = query.get_mut(target)
             {
-              let mut F: Vec3 = rb.v * (f.kd*-1.0);
+              if rb.kind == Rigidbody3DKind::Dynamic
+              {
+                let mut F: Vec3 = rb.v * (f.kd*-1.0);
 
-              // linear
-              rb.force += F;
+                // linear
+                rb.force += F;
 
-              // apply torque
-              F = rb.omega * (f.kd*-1.0);
-              rb.torque += F;
+                // apply torque
+                F = rb.omega * (f.kd*-1.0);
+                rb.torque += F;
+              }
             }
           }
         }
@@ -632,13 +653,16 @@ impl RigidbodySystem3D
       //- add constraint force
       for (i, (entity, mut rb, mut transform)) in query.iter_mut().enumerate()
       {
-        let F = Vec3::new(Q_c[i*3+0], Q_c[i*3+1], Q_c[i*3+2]);
-        // linear
-        rb.force += F;
+        if rb.kind == Rigidbody3DKind::Dynamic
+        {
+          let F = Vec3::new(Q_c[i*3+0], Q_c[i*3+1], Q_c[i*3+2]);
+          // linear
+          rb.force += F;
 
-        // torque
-        let contact = QP[i];
-        rb.torque += contact.cross(F);
+          // torque
+          let contact = QP[i];
+          rb.torque += contact.cross(F);
+        }
       }
     }
 
@@ -719,7 +743,7 @@ fn ode_euler<F: FnMut(&[f32], f32) -> Vec<f32>>(X: &[f32], delta_secs: f32, mut 
   return ret;
 }
 
-// TODO rk2 or rk4
+// TODO(XXX): rk2 or rk4
 
 fn gaussj(a: &mut Mat, b: &mut Vec<f32>) -> ()
 {
