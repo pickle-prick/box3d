@@ -344,6 +344,9 @@ impl RigidbodySystem3D
       let mut J: Mat = Mat::from_dim(m, N);
       let mut Jdot: Mat = Mat::from_dim(m, N);
       let mut C_q: Vec<f32> = vec![0.0; m]; /* [1,m] */
+      // ks and kd
+      let mut Ks: Vec<f32> = vec![0.0; m]; /* [1, m]] */
+      let mut Kd: Vec<f32> = vec![0.0; m]; /* [1, m]] */
 
       // collect J & Jt & QP
       for (c_idx, c) in system.constraints.iter().enumerate()
@@ -351,6 +354,9 @@ impl RigidbodySystem3D
         match(c)
         {
           Constraint3D::Distance(c) => {
+            Ks[c_idx] = c.stiffness;
+            Kd[c_idx] = c.damping;
+
             if let Ok([(entity_a, rb_a, _), (entity_b, rb_b, _)]) = query.get_many([c.body_a, c.body_b])
             {
               let mut a_idx = idx_map.get(&entity_a).unwrap();
@@ -424,8 +430,8 @@ impl RigidbodySystem3D
       // Jdot_qdot + JWQ => [m, 1]
       let mut b: Vec<f32> = Jdot_qdot.iter().zip(JWQ.iter()).map(|(x,y)| x+y).collect();
       // ks * C
-      b = b.into_iter().zip(C_q.iter()).map(|(x, y)| x+y*1000.0).collect();
-      b = b.into_iter().zip(Cdot_q.iter()).map(|(x, y)| x+y*64.0).collect();
+      b = b.into_iter().zip(C_q.iter()).zip(Ks.iter()).map(|((b, cq), ks)| b + cq*ks).collect();
+      b = b.into_iter().zip(Cdot_q.iter()).zip(Kd.iter()).map(|((b, cdq), ks)| b + cdq*ks).collect();
       b = b.into_iter().map(|x| -x).collect();
 
 

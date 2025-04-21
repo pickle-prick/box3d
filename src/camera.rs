@@ -134,7 +134,7 @@ fn camera_update_legacy(mut camera: Single<(&mut Transform, &mut AnimatedPositio
     delta_pitch = delta.y * camera_settings.pitch_speed;
   }
 
-  // TODO: euler won't work well, use quaternion instead
+  // NOTE: euler won't work well, use quaternion instead
   let (yaw, pitch, roll) = camera.rotation.to_euler(EulerRot::YXZ);
   let pitch = (pitch-delta_pitch).clamp(
     camera_settings.pitch_range.start,

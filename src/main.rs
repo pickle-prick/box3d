@@ -113,8 +113,8 @@ fn setup(mut commands: Commands,
         point_a: Vec3::new(0.0, 0.5, 0.0),
         point_b: Vec3::ZERO,
         d: 2.5,
-        stiffness: 100.0,
-        damping: 0.1,
+        stiffness: 1000.0,
+        damping: 64.,
       },
     ),
     // TODO(XXX): make two sphere to indicate joint
@@ -310,7 +310,8 @@ fn inspector(mut contexts: EguiContexts,
                 rb.Ibody = inertia_from_cuboid(mass, t.scale);
                 rb.Ibodyinv = inertiainv_from_cuboid(mass, t.scale);
                 rb.mass = mass;
-                // TODO(XXX): maybe we need to reset P & L
+                // TODO: do we really need to reset
+                rb.reset_energy();
               }
               ui.end_row();
 
@@ -382,6 +383,14 @@ fn inspector(mut contexts: EguiContexts,
                     c.d = d;
                   }
                 }
+                ui.end_row();
+
+                ui.label("stiffnes");
+                ui.add(egui::DragValue::new(&mut c.stiffness).speed(0.1).prefix("KS: "));
+                ui.end_row();
+
+                ui.label("damping");
+                ui.add(egui::DragValue::new(&mut c.damping).speed(0.1).prefix("KD: "));
                 ui.end_row();
               });
           },

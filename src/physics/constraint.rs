@@ -7,7 +7,6 @@ pub enum Constraint3D
   Hinge(HingeConstraint3D),
 }
 
-// TODO(XXX): remove Clone trait
 #[derive(Copy, Clone)]
 pub struct DistanceConstraint3D
 {
