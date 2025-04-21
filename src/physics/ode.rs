@@ -37,7 +37,6 @@ pub fn ode_rk2<F: FnMut(&[f32], f32) -> Vec<f32>>(X: &[f32], delta_secs: f32, mu
     {
         ret[i] = X[i] + k2_scaled[i];
     }
-
     return ret;
 }
 

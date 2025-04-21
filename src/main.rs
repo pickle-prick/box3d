@@ -146,7 +146,7 @@ fn setup(mut commands: Commands,
       Name::new("Control Instructions"),
       Text::new(
         "Camera\n\
-         2: Scroll the Middle Mouse Button to zoom the camera in or out \n\
+         1: Press and hold the Right Mouse Button to adjust the camera's yaw and pitch \n\
          2: Scroll the Middle Mouse Button to zoom the camera in or out \n\
          3: Press and hold the Middle Mouse Button to translate the camera left or right \n\
          \n\
