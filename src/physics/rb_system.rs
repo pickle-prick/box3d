@@ -147,7 +147,9 @@ impl RigidbodySystem3D
       state.extend_from_slice(&local[..]);
     }
 
-    let state_next = ode_euler(&state, delta_secs, |X: &[f32], delta_secs: f32| {RigidbodySystem3D::dxdt(X, delta_secs, &mut bodies, &system)} );;
+    // let state_next = ode_euler(&state, delta_secs, |X: &[f32], delta_secs: f32| {RigidbodySystem3D::dxdt(X, delta_secs, &mut bodies, &system)} );;
+    // let state_next = ode_rk2(&state, delta_secs, |X: &[f32], delta_secs: f32| {RigidbodySystem3D::dxdt(X, delta_secs, &mut bodies, &system)} );;
+    let state_next = ode_rk4(&state, delta_secs, |X: &[f32], delta_secs: f32| {RigidbodySystem3D::dxdt(X, delta_secs, &mut bodies, &system)} );;
     RigidbodySystem3D::state_set(&state_next, &mut bodies);
   }
 
@@ -429,11 +431,11 @@ impl RigidbodySystem3D
       debug_assert!(JWQ.len() == m);
       // Jdot_qdot + JWQ => [m, 1]
       let mut b: Vec<f32> = Jdot_qdot.iter().zip(JWQ.iter()).map(|(x,y)| x+y).collect();
-      // ks * C
+      // + ks * C
       b = b.into_iter().zip(C_q.iter()).zip(Ks.iter()).map(|((b, cq), ks)| b + cq*ks).collect();
+      // + kd * Cdot
       b = b.into_iter().zip(Cdot_q.iter()).zip(Kd.iter()).map(|((b, cdq), ks)| b + cdq*ks).collect();
       b = b.into_iter().map(|x| -x).collect();
-
 
       //- solve the linear system
       // [m, 1]
