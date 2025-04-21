@@ -254,100 +254,98 @@ fn inspector(mut contexts: EguiContexts,
 
       ui.separator();
 
-      // cube settings
-      if let Some(cube) = world.cube
+      // bodies
+      for (e, mut rb, mut t) in bodies.iter_mut()
       {
-        if let Ok((e, mut rb, mut t)) = bodies.get_mut(cube)
-        {
-          ui.heading(format!("Body {}-{}", e.index(), e.generation()));
-          ui.separator();
-          egui::Grid::new("main")
-            .num_columns(2)
-            .spacing([40., 6.0])
-            .striped(true)
-            .show(ui, |ui| {
-              ui.label("translation");
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut t.translation.x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut t.translation.y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut t.translation.z).speed(0.1).prefix("z: "));
-              });
-              ui.end_row();
-
-              ui.label("rotation");
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut t.rotation.x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut t.rotation.y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut t.rotation.z).speed(0.1).prefix("z: "));
-                ui.add(egui::DragValue::new(&mut t.rotation.w).speed(0.1).prefix("w: "));
-              });
-              ui.end_row();
-
-              ui.label("scale");
-              let Vec3 {mut x, mut y, mut z} = t.scale;
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut z).speed(0.1).prefix("z: "));
-              });
-              if x != t.scale.x || y != t.scale.y || z != t.scale.z
-              {
-                let dim = Vec3::new(x, y, z);
-                // TODO(XXX): what about negative scale, should we use abs values?
-                rb.Ibody = inertia_from_cuboid(rb.mass, dim);
-                rb.Ibodyinv = inertiainv_from_cuboid(rb.mass, dim);
-                t.scale = dim;
-                rb.reset_energy();
-                // TODO(XXX): maybe we need to reset P & L?
-              }
-              ui.end_row();
-
-              ui.label("mass");
-              let mut mass = rb.mass;
-              ui.add(egui::DragValue::new(&mut mass).speed(0.1).prefix("M: "));
-              if mass != rb.mass
-              {
-                rb.Ibody = inertia_from_cuboid(mass, t.scale);
-                rb.Ibodyinv = inertiainv_from_cuboid(mass, t.scale);
-                rb.mass = mass;
-                // TODO: do we really need to reset
-                rb.reset_energy();
-              }
-              ui.end_row();
-
-              ui.label("velocity");
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut rb.v.x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut rb.v.y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut rb.v.z).speed(0.1).prefix("z: "));
-              });
-              ui.end_row();
-
-              ui.label("omega");
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut rb.omega.x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut rb.omega.y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut rb.omega.z).speed(0.1).prefix("z: "));
-              });
-              ui.end_row();
-
-              ui.label("P");
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut rb.P.x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut rb.P.y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut rb.P.z).speed(0.1).prefix("z: "));
-              });
-              ui.end_row();
-
-              ui.label("L");
-              ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut rb.L.x).speed(0.1).prefix("x: "));
-                ui.add(egui::DragValue::new(&mut rb.L.y).speed(0.1).prefix("y: "));
-                ui.add(egui::DragValue::new(&mut rb.L.z).speed(0.1).prefix("z: "));
-              });
-              ui.end_row();
+        ui.heading(format!("Body {}-{}", e.index(), e.generation()));
+        ui.separator();
+        egui::Grid::new(format!("body: {}-{}", e.index(), e.generation()))
+          .num_columns(2)
+          .spacing([40., 6.0])
+          .striped(true)
+          .show(ui, |ui| {
+            ui.label("translation");
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut t.translation.x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut t.translation.y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut t.translation.z).speed(0.1).prefix("z: "));
             });
-        }
+            ui.end_row();
+
+            ui.label("rotation");
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut t.rotation.x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut t.rotation.y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut t.rotation.z).speed(0.1).prefix("z: "));
+              ui.add(egui::DragValue::new(&mut t.rotation.w).speed(0.1).prefix("w: "));
+            });
+            ui.end_row();
+
+            ui.label("scale");
+            let Vec3 {mut x, mut y, mut z} = t.scale;
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut z).speed(0.1).prefix("z: "));
+            });
+            if x != t.scale.x || y != t.scale.y || z != t.scale.z
+            {
+              let dim = Vec3::new(x, y, z);
+              // TODO(XXX): what about negative scale, should we use abs values?
+              rb.Ibody = inertia_from_cuboid(rb.mass, dim);
+              rb.Ibodyinv = inertiainv_from_cuboid(rb.mass, dim);
+              t.scale = dim;
+              rb.reset_energy();
+              // TODO(XXX): maybe we need to reset P & L?
+            }
+            ui.end_row();
+
+            ui.label("mass");
+            let mut mass = rb.mass;
+            ui.add(egui::DragValue::new(&mut mass).speed(0.1).prefix("M: "));
+            if mass != rb.mass
+            {
+              rb.Ibody = inertia_from_cuboid(mass, t.scale);
+              rb.Ibodyinv = inertiainv_from_cuboid(mass, t.scale);
+              rb.mass = mass;
+              // TODO: do we really need to reset
+              rb.reset_energy();
+            }
+            ui.end_row();
+
+            ui.label("velocity");
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut rb.v.x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut rb.v.y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut rb.v.z).speed(0.1).prefix("z: "));
+            });
+            ui.end_row();
+
+            ui.label("omega");
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut rb.omega.x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut rb.omega.y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut rb.omega.z).speed(0.1).prefix("z: "));
+            });
+            ui.end_row();
+
+            ui.label("P");
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut rb.P.x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut rb.P.y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut rb.P.z).speed(0.1).prefix("z: "));
+            });
+            ui.end_row();
+
+            ui.label("L");
+            ui.horizontal(|ui| {
+              ui.add(egui::DragValue::new(&mut rb.L.x).speed(0.1).prefix("x: "));
+              ui.add(egui::DragValue::new(&mut rb.L.y).speed(0.1).prefix("y: "));
+              ui.add(egui::DragValue::new(&mut rb.L.z).speed(0.1).prefix("z: "));
+            });
+            ui.end_row();
+          });
+
       }
 
       ui.separator();
