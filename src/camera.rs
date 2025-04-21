@@ -1,5 +1,17 @@
-use bevy::{input::mouse::{AccumulatedMouseMotion, MouseScrollUnit, MouseWheel}, prelude::*};
 use std::{f32::consts::FRAC_PI_2, ops::Range};
+use bevy::{input::mouse::{AccumulatedMouseMotion, MouseScrollUnit, MouseWheel}, prelude::*};
+
+pub struct CameraPlugin;
+impl Plugin for CameraPlugin
+{
+  fn build(&self, app: &mut App)
+  {
+    app
+      .init_resource::<CameraSettings>()
+      .add_systems(Startup, setup)
+      .add_systems(Update, camera_update);
+  }
+}
 
 #[derive(Debug, Resource)]
 pub struct CameraSettings
@@ -31,15 +43,88 @@ impl Default for CameraSettings
   }
 }
 
-fn camera_update(
-  mut camera: Single<&mut Transform, With<Camera>>,
-  camera_settings: Res<CameraSettings>,
-  mouse_buttons: Res<ButtonInput<MouseButton>>,
-  mouse_motion: Res<AccumulatedMouseMotion>,
-  mut evr_scroll: EventReader<MouseWheel>,
-  time: Res<Time>,
-)
+#[derive(Component)]
+struct AnimatedPosition(Vec3);
+
+fn setup(mut commands: Commands)
 {
+  // camera
+  commands.spawn((
+    Camera3d::default(),
+    Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+    AnimatedPosition(Vec3::new(-2.5, 4.5, 9.0))
+  ));
+}
+
+fn camera_update(mut camera: Single<(&mut Transform, &mut AnimatedPosition), With<Camera>>,
+                  camera_settings: Res<CameraSettings>,
+                  mouse_buttons: Res<ButtonInput<MouseButton>>,
+                  mouse_motion: Res<AccumulatedMouseMotion>,
+                  mut evr_scroll: EventReader<MouseWheel>,
+                  time: Res<Time>)
+{
+  let (ref mut camera, ref mut animated_position) = *camera;
+  let delta = mouse_motion.delta;
+  let mut delta_yaw = 0.0;
+  let mut delta_pitch = 0.0;
+  if mouse_buttons.pressed(MouseButton::Right)
+  {
+    delta_yaw = delta.x * camera_settings.yaw_speed;
+    delta_pitch = delta.y * camera_settings.pitch_speed;
+  }
+
+  let h_turn = delta_yaw * 0.5;
+  let v_turn = delta_pitch *0.5;
+
+  let mut rotation = camera.rotation;
+  let h_q = Quat::from_axis_angle(Vec3::new(0.,-1.,0.), delta_yaw);
+  rotation = h_q.mul_quat(rotation);
+  let right = rotation.mul_vec3(Vec3::new(-1.,0.,0.));
+  let v_q = Quat::from_axis_angle(right, v_turn);
+  rotation = v_q.mul_quat(rotation);
+  camera.rotation = rotation;
+
+  // translation
+  let mut translation_delta: Vec3 = Vec3::new(0.0,0.0,0.0);
+  let mut animated_translation_delta: Vec3 = Vec3::new(0.0,0.0,0.0);
+  for ev in evr_scroll.read()
+  {
+    match ev.unit
+    {
+      MouseScrollUnit::Line =>
+      {
+        // TODO(XXX): move this scale into camera settings
+        let scale = ev.y;
+        animated_translation_delta += scale*camera.forward();
+      }
+      MouseScrollUnit::Pixel => {todo!()}
+    }
+  }
+  if mouse_buttons.pressed(MouseButton::Middle)
+  {
+    // TODO(XXX): move this scale into camera settings
+    let scale = 0.003;
+    translation_delta += (scale*delta.x) * camera.left();
+    translation_delta += (scale*delta.y) * camera.up();
+  }
+  camera.translation += translation_delta;
+  animated_position.0 += translation_delta;
+  animated_position.0 += animated_translation_delta;
+
+  // animate position
+  let rate = 1. - 2.0_f64.powf(-8. * time.delta_secs_f64());
+  let new_translation = rate as f32 * (animated_position.0 - camera.translation);
+  camera.translation += new_translation;
+}
+
+fn camera_update_legacy(mut camera: Single<(&mut Transform, &mut AnimatedPosition), With<Camera>>,
+                 camera_settings: Res<CameraSettings>,
+                 mouse_buttons: Res<ButtonInput<MouseButton>>,
+                 mouse_motion: Res<AccumulatedMouseMotion>,
+                 mut evr_scroll: EventReader<MouseWheel>,
+                 time: Res<Time>)
+{
+  let (ref mut camera, ref mut animated_position) = *camera;
   let delta = mouse_motion.delta;
   let mut delta_yaw = 0.0;
   let mut delta_pitch = 0.0;
@@ -59,7 +144,6 @@ fn camera_update(
   camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, roll);
 
   // translation
-  // TODO(XXX): vertical and horizontal
   let mut translation_delta: Vec3 = Vec3::new(0.0,0.0,0.0);
   for ev in evr_scroll.read()
   {
@@ -82,28 +166,4 @@ fn camera_update(
     translation_delta += (scale*delta.y) * camera.up();
   }
   camera.translation += translation_delta;
-}
-
-fn instructions(mut commands: Commands)
-{
-  commands.spawn((
-      Name::new("Instructions"),
-      Text::new("Mouse up"),
-      Node
-      {
-        position_type: PositionType::Absolute,
-        top: Val::Px(32.),
-        left: Val::Px(12.),
-        ..default()
-      }
-  ));
-}
-
-pub struct CameraPlugin;
-impl Plugin for CameraPlugin
-{
-  fn build(&self, app: &mut App)
-  {
-    app.init_resource::<CameraSettings>().add_systems(Update, camera_update).add_systems(Update, instructions);
-  }
 }

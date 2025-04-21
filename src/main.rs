@@ -10,9 +10,10 @@ use bevy::{color::palettes::css::*,
            prelude::*};
 
 mod camera;
-use camera::CameraPlugin;
 mod physics;
-use physics::{PhysicsPlugin, Rigidbody3D, RigidbodySystem3D, Constraint3D, DistanceConstraint3D, Rigidbody3DKind, ConstantForce3D, Force3D, VisousDrag3D, inertia_from_cuboid, inertiainv_from_cuboid};
+
+use camera::CameraPlugin;
+use physics::prelude::*;
 
 fn main()
 {
@@ -42,6 +43,7 @@ struct World
   anchor: Option<Entity>,
   // hot_key: Option<Entity>,
   active_key: Option<Entity>,
+  lazer_strength: f32,
 }
 
 impl Default for World
@@ -54,6 +56,7 @@ impl Default for World
       anchor: None,
       // hot_key: None,
       active_key: None,
+      lazer_strength: 100.,
     }
   }
 }
@@ -138,25 +141,31 @@ fn setup(mut commands: Commands,
     Transform::from_xyz(4.0, 8.0, 4.0),
   ));
 
-  // camera
+  // instructions
   commands.spawn((
-    Camera3d::default(),
-    Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
-  ));
-
-  commands.spawn((
-    Text::new(
-      "Press 'T' to toggle drawing gizmos on top of everything else in the scene\n\
-          Press 'P' to toggle perspective for line gizmos\n\
-          Hold 'Left' or 'Right' to change the line width of straight gizmos\n\
-          Press 'J' or 'K' to cycle through line joins for straight or round gizmos",
-    ),
-    Node {
-      position_type: PositionType::Absolute,
-      top: Val::Px(12.0),
-      left: Val::Px(12.0),
-      ..default()
-    },
+      Name::new("Control Instructions"),
+      Text::new(
+        "Camera\n\
+         2: Scroll the Middle Mouse Button to zoom the camera in or out \n\
+         2: Scroll the Middle Mouse Button to zoom the camera in or out \n\
+         3: Press and hold the Middle Mouse Button to translate the camera left or right \n\
+         \n\
+         Control\n\
+         1. Click on the cuboid body to apply a force to it \n\
+         2. Drag the contact ball to adjust the contact point",
+      ),
+      TextFont
+      {
+        font_size: 16.,
+        ..default()
+      },
+      Node
+      {
+        position_type: PositionType::Absolute,
+        top: Val::Px(12.),
+        right: Val::Px(12.),
+        ..default()
+      }
   ));
 }
 
@@ -204,21 +213,21 @@ fn draw_gizmos(mut gizmos: Gizmos,
   }
 
   // draw body velocity
-  for (_, rb, t) in bodies.iter()
-  {
-    if rb.kind == Rigidbody3DKind::Dynamic
-    {
-      gizmos
-        .arrow(t.translation, t.translation+rb.force, LIGHT_SALMON)
-        .with_tip_length(0.1); 
-    }
+  // for (_, rb, t) in bodies.iter()
+  // {
+  //   if rb.kind == Rigidbody3DKind::Dynamic
+  //   {
+  //     gizmos
+  //       .arrow(t.translation, t.translation+rb.force, LIGHT_SALMON)
+  //       .with_tip_length(0.1); 
+  //   }
 
-    // gizmos.ray(
-    //   Vec3::new(1.0, 0.0, 0.0),
-    //   Vec3::new(-3., ops::sin(time.elapsed_secs() * 3.), 0.),
-    //   BLUE,
-    // );
-  }
+  //   // gizmos.ray(
+  //   //   Vec3::new(1.0, 0.0, 0.0),
+  //   //   Vec3::new(-3., ops::sin(time.elapsed_secs() * 3.), 0.),
+  //   //   BLUE,
+  //   // );
+  // }
 }
 
 fn inspector(mut contexts: EguiContexts,
@@ -230,6 +239,22 @@ fn inspector(mut contexts: EguiContexts,
     .default_size([300., 0.])
     .resizable([true, false])
     .show(contexts.ctx_mut(), |ui| {
+      // world settings
+      ui.heading("World");
+      ui.separator();
+      egui::Grid::new("world")
+        .num_columns(2)
+        .spacing([40., 6.0])
+        .striped(true)
+        .show(ui, |ui| {
+          ui.label("lazer_strength");
+          ui.add(egui::DragValue::new(&mut world.lazer_strength).speed(0.1).prefix("x: "));
+          ui.end_row();
+      });
+
+      ui.separator();
+
+      // cube settings
       if let Some(cube) = world.cube
       {
         if let Ok((e, mut rb, mut t)) = bodies.get_mut(cube)
@@ -331,13 +356,13 @@ fn inspector(mut contexts: EguiContexts,
         match *c
         {
           Constraint3D::Distance(ref mut c) => {
-            ui.heading(format!("Constraint::Distance {}-{}", e.generation(), e.index()));
+            ui.heading(format!("Constraint::Distance {}-{}", e.index(), e.generation()));
             egui::Grid::new("e")
               .num_columns(2)
               .spacing([40., 6.0])
               .striped(true)
               .show(ui, |ui| {
-                ui.label("Translation");
+                ui.label("translation");
                 ui.horizontal(|ui| {
                   ui.add(egui::DragValue::new(&mut c_t.translation.x).speed(0.1).prefix("x: "));
                   ui.add(egui::DragValue::new(&mut c_t.translation.y).speed(0.1).prefix("y: "));
@@ -346,7 +371,7 @@ fn inspector(mut contexts: EguiContexts,
                 ui.end_row();
 
                 let mut d = c.d;
-                ui.label("Distance");
+                ui.label("distance");
                 ui.add(egui::DragValue::new(&mut d).speed(0.1).prefix("D: "));
                 if d != c.d
                 {
@@ -425,7 +450,7 @@ fn hit_with_lazer_eye(pointers: Query<&PointerInteraction>,
       {
         let F = ConstantForce3D {
           dir: (point-camera_transform.translation).normalize(),
-          strength: 100.0,
+          strength: world.lazer_strength,
           // relative to the body position (in world space)
           contact: point-t_a.translation,
           target: entity,
