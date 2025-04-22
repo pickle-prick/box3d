@@ -42,3 +42,10 @@ https://graphics.stanford.edu/courses/cs448b-00-winter/papers/phys_model.pdf
 
 ### Numerical Recipes in C.
 https://www.cec.uchile.cl/cinetica/pcordero/MC_libros/NumericalRecipesinC.pdf
+
+### ConstraintsDerivationRigidBody3D
+https://danielchappuis.ch/download/ConstraintsDerivationRigidBody3D.pdf
+
+### Distance Constraint
+https://dyn4j.org/2010/09/distance-constraint/
+https://dyn4j.org/2010/12/max-distance-constraint/
