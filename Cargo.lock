@@ -397,7 +397,6 @@ version = "0.16.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfa360f59b3cad535a8f80833e608037f776b10f99ef94f63475e5d3bc750d5"
 dependencies = [
- "bevy_dylib",
  "bevy_internal",
 ]
 
@@ -614,15 +613,6 @@ dependencies = [
  "log",
  "serde",
  "sysinfo",
-]
-
-[[package]]
-name = "bevy_dylib"
-version = "0.16.0-rc.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "539cfeea53b35071d817bde008bfd5357a3ae25e1b2584ce829a11de5a430627"
-dependencies = [
- "bevy_internal",
 ]
 
 [[package]]
