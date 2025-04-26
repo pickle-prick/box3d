@@ -359,11 +359,6 @@ impl RigidbodySystem3D
         idx_map.insert(entity, i);
       }
 
-      if F_ext[6] != 0.
-      {
-        println!("");
-      }
-
       // jacobian of C(q) [m, N]
       let mut J_trans: Mat = Mat::from_dim(m, N);
       let mut J_rot: Mat = Mat::from_dim(m, N);
@@ -394,30 +389,29 @@ impl RigidbodySystem3D
               let Rsa = Mat::skew_symmetric_from_vec3(&ra);
               let Rsb = Mat::skew_symmetric_from_vec3(&rb);
 
+              let J0 = n.clone();
+              let J1 = (&Rsa * &n);
+              let J2 = negate_vf32(&J0);
+              let J3 = negate_vf32(&(&Rsb * &n));
+
               // J for a
               let mut i = c_idx;
               let mut j = a_idx*6;
-              // TODO(XXX): make it simpler, don't use loop here
-              for k in 0..3
-              {
-                // J_trans
-                let mut jj = j+k+0;
-                J_trans[i][jj] = n[k];
-                jj+=3;
-                J_trans[i][jj] = (&Rsa * &n)[k];
-              }
+              J_trans[i][j+0] = J0[0];
+              J_trans[i][j+1] = J0[1];
+              J_trans[i][j+2] = J0[2];
+              J_trans[i][j+3] = J1[0];
+              J_trans[i][j+4] = J1[1];
+              J_trans[i][j+5] = J1[2];
 
               // J for b
               j = b_idx*6;
-              // TODO(XXX): make it simpler, don't use loop here
-              for k in 0..3
-              {
-                // J_trans
-                let mut jj = j+k+0;
-                J_trans[i][jj] = -n[k];
-                jj+=3;
-                J_trans[i][jj] = -(&Rsa * &n)[k];
-              }
+              J_trans[i][j+0] = J2[0];
+              J_trans[i][j+1] = J2[1];
+              J_trans[i][j+2] = J2[2];
+              J_trans[i][j+3] = J3[0];
+              J_trans[i][j+4] = J3[1];
+              J_trans[i][j+5] = J3[2];
 
               // C(q)
               C_trans[c_idx] = u.length() - c.d;
