@@ -240,13 +240,14 @@ impl RigidbodySystem3D
         // global visous_drag
         f = rb.v * (system.visous_drag.kd*-1.0);
         rb.force += f;
+        // TODO(XXX): not sure if this is right
         f = rb.omega * (system.visous_drag.kd*-1.0);
         rb.torque += f;
       }
     }
 
     /////////////////////////////////////////////////////////////////////////////////////
-    //- unconstraint force/torque (contact position dependent)
+    //- unconstraint(F_ext) force/torque (contact position dependent)
 
     for i in system.forces.iter() 
     {
@@ -292,113 +293,139 @@ impl RigidbodySystem3D
     }
 
     /////////////////////////////////////////////////////////////////////////////////////
-    //- constrant force/torque (contact position dependent)
+    //- constrant(F_c) force/torque (contact position dependent)
 
     if system.constraints.len() > 0
     {
       /////////////////////////////////////////////////////////////////////////////////
       // Collect components
 
-      let m: usize = system.constraints.len();
-      let n: usize = body_count;
-      let N: usize = n*3; /* only position */
+      let m: usize = system.constraints.len(); /* num of constraint */
+      let n: usize = body_count; /* number of body */
+      let N: usize = n*6; /* position and rotation(euler) */
       let mut idx_map: HashMap<Entity, usize> = HashMap::new(); /* entity index to state X */
 
-      // force vector [3n, 1]
-      let mut Q: Vec<f32> = vec![0.0; N];
+      // F_ext force&torque vector [N, 1]
+      let mut F_ext: Vec<f32> = vec![0.0; N];
       // force position (relatvie to the body's mass center) vector [n, 1]
-      let mut QP: Vec<Vec3> = vec![Vec3::ZERO; n];
+      let mut FP: Vec<Vec3> = vec![Vec3::ZERO; n];
 
-      // velocity vector [3n, 1]
-      // Unless phase space, q only contains positions, qdot only contains velocities
-      let mut qdot: Vec<f32> = vec![0.0; N];
+      // velocity(linear+angular) vector [N, 1]
+      let mut v: Vec<f32> = vec![0.0; N];
 
-      // mass matrix [3n, 3n]
-      // TODO(XXX): if we were going to use cg, mass matrix could be stored as vector for easier computation
-      // W is just the reciprocal of M
+      // mass matrix [N, N]
+      // W is just the reciprocal of M (mass+Iinv)
       let mut W: Mat = Mat::from_dim(N, N);
 
       // loop through all bodies to collect above values
       for (i, (entity, mut rb, mut transform)) in query.iter_mut().enumerate()
       {
-        let mut src = &mut Q[i*3..];
-        // Q
+        let mut src = &mut F_ext[i*6..];
+        // F_ext
         src[0] = rb.force.x;
         src[1] = rb.force.y;
         src[2] = rb.force.z;
+        src[3] = rb.torque.x;
+        src[4] = rb.torque.y;
+        src[5] = rb.torque.z;
 
-        src = &mut qdot[i*3..];
-        // qdot
+        src = &mut v[i*6..];
+        // v
         src[0] = rb.v.x;
         src[1] = rb.v.y;
         src[2] = rb.v.z;
+        src[3] = rb.omega.x;
+        src[4] = rb.omega.y;
+        src[5] = rb.omega.z;
 
         // W
-        let ii = i*3;
+        let mut ii = i*6 + 0;
+        // mass
         W[ii+0][ii+0] = 1.0 / rb.mass;
         W[ii+1][ii+1] = 1.0 / rb.mass;
         W[ii+2][ii+2] = 1.0 / rb.mass;
+        // Iinv
+        // TODO(XXX): is all Iinv matrix symmetric
+        ii += 3;
+        for iii in 0..3
+        {
+          for jjj in 0..3
+          {
+            W[iii+ii][jjj+ii] = rb.Iinv.row(iii)[jjj];
+          }
+        }
 
+        // cache body index
         idx_map.insert(entity, i);
       }
 
-      // jacobian of C(q) [m, 3n]
-      let mut J: Mat = Mat::from_dim(m, N);
-      let mut Jdot: Mat = Mat::from_dim(m, N);
-      let mut C_q: Vec<f32> = vec![0.0; m]; /* [1,m] */
-      // ks and kd
-      let mut Ks: Vec<f32> = vec![0.0; m]; /* [1, m]] */
-      let mut Kd: Vec<f32> = vec![0.0; m]; /* [1, m]] */
+      if F_ext[6] != 0.
+      {
+        println!("");
+      }
 
-      // collect J & Jt & QP
+      // jacobian of C(q) [m, N]
+      let mut J_trans: Mat = Mat::from_dim(m, N);
+      let mut J_rot: Mat = Mat::from_dim(m, N);
+      let mut C_trans: Vec<f32>  = vec![0.; m];
+      let mut C_rot: Vec<f32>  = vec![0.; m];
+
+      // collect J & Jt & FP
       for (c_idx, c) in system.constraints.iter().enumerate()
       {
         match(c)
         {
           Constraint3D::Distance(c) => {
-            Ks[c_idx] = c.stiffness;
-            Kd[c_idx] = c.damping;
-
             if let Ok([(entity_a, rb_a, _), (entity_b, rb_b, _)]) = query.get_many([c.body_a, c.body_b])
             {
               let mut a_idx = idx_map.get(&entity_a).unwrap();
               let mut b_idx = idx_map.get(&entity_b).unwrap();
 
               // relative position after rotation
-              let pos_rel_a = rb_a.q.mul_vec3(c.point_a);
-              let pos_rel_b = rb_b.q.mul_vec3(c.point_b);
+              let ra = rb_a.q.mul_vec3(c.point_a);
+              let rb = rb_b.q.mul_vec3(c.point_b);
               // world space
-              let pos_a = pos_rel_a + rb_a.x;
-              let pos_b = pos_rel_b + rb_b.x;
+              let pa = ra + rb_a.x;
+              let pb = rb + rb_b.x;
 
-              // J & Jdot for a
+              let u = pa-pb;
+              let n = u.normalize();
+              let n: Vec<f32> = vec![n.x, n.y, n.z];
+              let Rsa = Mat::skew_symmetric_from_vec3(&ra);
+              let Rsb = Mat::skew_symmetric_from_vec3(&rb);
+
+              // J for a
               let mut i = c_idx;
-              let mut j = a_idx*3;
+              let mut j = a_idx*6;
+              // TODO(XXX): make it simpler, don't use loop here
               for k in 0..3
               {
-                let jj = j+k;
-                J[i][jj] = pos_a[k] - pos_b[k];
-                Jdot[i][jj] = rb_a.v[k] - rb_b.v[k];
+                // J_trans
+                let mut jj = j+k+0;
+                J_trans[i][jj] = n[k];
+                jj+=3;
+                J_trans[i][jj] = (&Rsa * &n)[k];
               }
 
-              // J & Jdot for b
-              j = b_idx*3;
+              // J for b
+              j = b_idx*6;
+              // TODO(XXX): make it simpler, don't use loop here
               for k in 0..3
               {
-                let jj = j+k;
-                J[i][jj] = -(pos_a[k] - pos_b[k]);
-                Jdot[i][jj] = -(rb_a.v[k] - rb_b.v[k]);
+                // J_trans
+                let mut jj = j+k+0;
+                J_trans[i][jj] = -n[k];
+                jj+=3;
+                J_trans[i][jj] = -(&Rsa * &n)[k];
               }
 
               // C(q)
-              let x0 = pos_a.x - pos_b.x;
-              let y0 = pos_a.y - pos_b.y;
-              let z0 = pos_a.z - pos_b.z;
-              C_q[c_idx] = 0.5 * (x0*x0 + y0*y0 + z0*z0 - c.d*c.d);
+              C_trans[c_idx] = u.length() - c.d;
+              C_rot[c_idx] = 0.;
 
-              // QP
-              QP[*a_idx] = pos_rel_a;
-              QP[*b_idx] = pos_rel_b;
+              // FP
+              FP[*a_idx] = ra;
+              FP[*b_idx] = rb;
             }
             else
             {
@@ -410,58 +437,65 @@ impl RigidbodySystem3D
       }
 
       // tranpose of J
-      let Jt: Mat = J.tranpose();
-
-      // Cdot(q) [1, m]
-      let Cdot_q = &J * &qdot;
-      debug_assert_eq!(m, Cdot_q.len());
+      let Jt_trans: Mat = J_trans.tranpose();
+      let Jt_rot: Mat = J_rot.tranpose();
 
       ///////////////////////////////////////////////////////////////////////////////////
       //~ Compute
 
-      //- solve larange multipliers
-      // [m, 3n] [3n, 1] => [m, 1]
-      let Jdot_qdot: Vec<f32> = &Jdot * &qdot;
-      debug_assert!(Jdot_qdot.len() == m);
-      // [3n, 3n] * [3n, 1] => [3n, 1]
-      let WQ: Vec<f32> = &W * &Q;
-      debug_assert!(WQ.len() == N);
-      // [m, 3n] * [3n, 1] => [m, 1]
-      let JWQ: Vec<f32> = &J * &WQ;
-      debug_assert!(JWQ.len() == m);
-      // Jdot_qdot + JWQ => [m, 1]
-      let mut b: Vec<f32> = Jdot_qdot.iter().zip(JWQ.iter()).map(|(x,y)| x+y).collect();
-      // + ks * C
-      b = b.into_iter().zip(C_q.iter()).zip(Ks.iter()).map(|((b, cq), ks)| b + cq*ks).collect();
-      // + kd * Cdot
-      b = b.into_iter().zip(Cdot_q.iter()).zip(Kd.iter()).map(|((b, cdq), ks)| b + cdq*ks).collect();
-      b = b.into_iter().map(|x| -x).collect();
+      // K
+      let mut K_trans = &(&J_trans * &W) * &Jt_trans;
+      let mut K_rot = &(&J_rot * &W) * &Jt_rot;
+      debug_assert_eq!(K_trans.i_dim, K_trans.j_dim);
+      debug_assert_eq!(K_rot.i_dim, K_rot.j_dim);
+
+      // bias velocity vector
+      let b_trans = scale_vf32(&C_trans, 0.2/delta_secs);
+      let b_rot = scale_vf32(&C_rot, 0.2/delta_secs);
+
+      // vdot
+      let vdot = add_vf32(&v, &(&W * &scale_vf32(&F_ext,delta_secs)));
+
+      // B
+      let B_trans = negate_vf32(&add_vf32(&(&J_trans*&vdot), &b_trans));
+      let B_rot = negate_vf32(&add_vf32(&(&J_rot*&vdot), &b_rot));
 
       //- solve the linear system
-      // [m, 1]
-      let mut A: Mat = &J * &W;
-      A = &A * &Jt;
-      let mut lambda = b.clone();
-      debug_assert_eq!(lambda.len(), m);
-      debug_assert_eq!(A.i_dim, A.j_dim);
-      gaussj(&mut A, &mut lambda);
+
+      //- solve larange multipliers
+      let mut lambda_trans = B_trans.clone();
+      let mut lambda_rot = B_rot.clone();
+      gaussj(&mut K_trans, &mut lambda_trans);
+      gaussj(&mut K_rot, &mut lambda_rot);
 
       //- compute the constraint force
-      let Q_c = &Jt * &lambda;
-      debug_assert_eq!(Q_c.len(), N);
+      let Fc_trans = scale_vf32(&(&Jt_trans*&lambda_trans), 1./delta_secs);
+      let Fc_rot = scale_vf32(&(&Jt_rot*&lambda_rot), 1./delta_secs);
+      debug_assert_eq!(Fc_trans.len(), N);
 
       //- add constraint force
       for (i, (entity, mut rb, mut transform)) in query.iter_mut().enumerate()
       {
+        let ii = i*6;
         if rb.kind == Rigidbody3DKind::Dynamic
         {
-          let F = Vec3::new(Q_c[i*3+0], Q_c[i*3+1], Q_c[i*3+2]);
           // linear
-          rb.force += F;
+          rb.force.x += Fc_trans[ii+0];
+          rb.force.y += Fc_trans[ii+1];
+          rb.force.z += Fc_trans[ii+2];
+
+          rb.force.x += Fc_rot[ii+0];
+          rb.force.y += Fc_rot[ii+1];
+          rb.force.z += Fc_rot[ii+2];
 
           // torque
-          let contact = QP[i];
-          rb.torque += contact.cross(F);
+          rb.torque.x += Fc_trans[ii+3];
+          rb.torque.y += Fc_trans[ii+4];
+          rb.torque.z += Fc_trans[ii+5];
+
+          rb.torque.x += Fc_rot[ii+3];
+          rb.torque.y += Fc_rot[ii+4];
+          rb.torque.z += Fc_rot[ii+5];
         }
       }
     }
@@ -497,7 +531,6 @@ impl RigidbodySystem3D
       src[11] = rb.torque.y;
       src[12] = rb.torque.z;
     }
-
     return ret;
   }
 }
@@ -509,7 +542,7 @@ impl Default for RigidbodySystem3D
     Self
     {
       gravity: Gravity3D { g: 9.81, dir: Vec3::new(0.0, -1.0, 0.0) },
-      // gravity: Gravity3D { g: 0.0, dir: Vec3::new(0.0, -1.0, 0.0) },
+      // gravity: Gravity3D { g: 0., dir: Vec3::new(0.0, -1.0, 0.0) },
       visous_drag: VisousDrag3D { kd: 0.6, target: None},
       forces: Vec::new(),
       constraints: Vec::new(),

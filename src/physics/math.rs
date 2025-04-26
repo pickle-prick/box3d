@@ -130,6 +130,18 @@ impl Mat
       rows,
     }
   }
+
+  pub fn skew_symmetric_from_vec3(v: &Vec3) -> Self
+  {
+    let mut ret = Self::from_dim(3,3);
+    ret[0][1] = -v.z;
+    ret[0][2] = v.y;
+    ret[1][0] = v.z;
+    ret[1][2] = -v.x;
+    ret[2][0] = -v.y;
+    ret[2][1] = v.x;
+    return ret;
+  }
 }
 
 pub fn gaussj(a: &mut Mat, b: &mut Vec<f32>) -> ()
@@ -185,7 +197,9 @@ pub fn gaussj(a: &mut Mat, b: &mut Vec<f32>) -> ()
     if(a[icol][icol] == 0.0)
     {
       // singular matrix ?
-      assert!(false);
+      // assert!(false);
+      // NOTE(k): if A is 0 and b is 0
+      return;
     }
     pivinv = 1.0/a[icol][icol];
     a[icol][icol] = 1.0;
@@ -222,6 +236,20 @@ pub fn gaussj(a: &mut Mat, b: &mut Vec<f32>) -> ()
   }
 }
 
+pub fn scale_vf32(src: &Vec<f32>, s: f32) -> Vec<f32>
+{
+  return src.iter().map(|i| i*s).collect();
+}
+
+pub fn add_vf32(a: &Vec<f32>, b: &Vec<f32>) -> Vec<f32>
+{
+  return a.iter().zip(b.iter()).map(|(a,b)| a+b).collect();
+}
+
+pub fn negate_vf32(src: &Vec<f32>) -> Vec<f32>
+{
+  return src.iter().map(|i| -i).collect();
+}
 
 #[cfg(test)]
 mod tests

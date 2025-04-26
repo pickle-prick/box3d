@@ -49,3 +49,6 @@ https://danielchappuis.ch/download/ConstraintsDerivationRigidBody3D.pdf
 ### Distance Constraint
 https://dyn4j.org/2010/09/distance-constraint/
 https://dyn4j.org/2010/12/max-distance-constraint/
+
+### Constrainted Rigidbody Simulation
+https://www.toptal.com/game/video-game-physics-part-iii-constrained-rigid-body-simulation
