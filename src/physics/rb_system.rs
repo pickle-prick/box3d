@@ -382,6 +382,16 @@ impl RigidbodySystem3D
               // world space
               let pa = ra + rb_a.x;
               let pb = rb + rb_b.x;
+              let d = (pa-pb).length();
+              let mut d_target = d;
+              if d < c.min_distance
+              {
+                d_target = c.min_distance;
+              }
+              if d > c.max_distance
+              {
+                d_target = c.max_distance;
+              }
 
               let u = pa-pb;
               let n = u.normalize();
@@ -389,10 +399,18 @@ impl RigidbodySystem3D
               let Rsa = Mat::skew_symmetric_from_vec3(&ra);
               let Rsb = Mat::skew_symmetric_from_vec3(&rb);
 
-              let J0 = n.clone();
-              let J1 = (&Rsa * &n);
-              let J2 = negate_vf32(&J0);
-              let J3 = negate_vf32(&(&Rsb * &n));
+              let mut J0: Vec<f32> = vec![0.; 3];
+              let mut J1: Vec<f32> = vec![0.; 3];
+              let mut J2: Vec<f32> = vec![0.; 3];
+              let mut J3: Vec<f32> = vec![0.; 3];
+
+              if d != d_target
+              {
+                J0 = n.clone();
+                J1 = (&Rsa * &n);
+                J2 = negate_vf32(&J0);
+                J3 = negate_vf32(&(&Rsb * &n));
+              }
 
               // J for a
               let mut i = c_idx;
@@ -414,7 +432,7 @@ impl RigidbodySystem3D
               J_trans[i][j+5] = J3[2];
 
               // C(q)
-              C_trans[c_idx] = u.length() - c.d;
+              C_trans[c_idx] = d - d_target;
               C_rot[c_idx] = 0.;
 
               // FP

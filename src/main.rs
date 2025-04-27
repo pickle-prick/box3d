@@ -113,8 +113,10 @@ fn setup(mut commands: Commands,
         point_a: Vec3::new(0.0, 0.5, 0.0),
         point_b: Vec3::ZERO,
         d: 2.5,
-        stiffness: 1000.0,
-        damping: 64.,
+        min_distance: 1.,
+        max_distance: 3.,
+        // stiffness: 1000.0,
+        // damping: 64.,
       },
     ),
     // TODO(XXX): make two sphere to indicate joint
@@ -369,26 +371,26 @@ fn inspector(mut contexts: EguiContexts,
                 });
                 ui.end_row();
 
-                let mut d = c.d;
-                ui.label("distance");
-                ui.add(egui::DragValue::new(&mut d).speed(0.1).prefix("D: "));
-                if d != c.d
-                {
-                  if let Ok([(entity_a, mut rb_a, t_a), (entity_b, mut rb_b, t_b)]) = bodies.get_many_mut([c.body_a, c.body_b])
-                  {
-                    rb_a.reset_energy();
-                    rb_b.reset_energy();
-                    c.d = d;
-                  }
-                }
+                // let mut d = c.d;
+                // ui.label("distance");
+                // ui.add(egui::DragValue::new(&mut d).speed(0.1).prefix("D: "));
+                // if d != c.d
+                // {
+                //   if let Ok([(entity_a, mut rb_a, t_a), (entity_b, mut rb_b, t_b)]) = bodies.get_many_mut([c.body_a, c.body_b])
+                //   {
+                //     rb_a.reset_energy();
+                //     rb_b.reset_energy();
+                //     c.d = d;
+                //   }
+                // }
+                // ui.end_row();
+
+                ui.label("min_distance");
+                ui.add(egui::DragValue::new(&mut c.min_distance).speed(0.1).prefix("KS: "));
                 ui.end_row();
 
-                ui.label("stiffnes");
-                ui.add(egui::DragValue::new(&mut c.stiffness).speed(0.1).prefix("KS: "));
-                ui.end_row();
-
-                ui.label("damping");
-                ui.add(egui::DragValue::new(&mut c.damping).speed(0.1).prefix("KD: "));
+                ui.label("max_distance");
+                ui.add(egui::DragValue::new(&mut c.max_distance).speed(0.1).prefix("KD: "));
                 ui.end_row();
               });
           },
