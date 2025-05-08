@@ -1,5 +1,7 @@
 # A Simple Physics Engine built for understanding how it work
 
+![Screenshot of a 3D scene](./screenshots/demo.gif)
+
 ## Build & Run
 
 ### Build
